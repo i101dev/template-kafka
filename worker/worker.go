@@ -7,18 +7,19 @@ import (
 	"syscall"
 
 	"github.com/IBM/sarama"
+	"github.com/i101dev/template-kafka/config"
 )
 
 func main() {
-	topic := "comments"
 
-	worker, err := connectConsumer([]string{"localhost:29092"})
+	worker, err := connectConsumer([]string{config.KafkaURI()})
 
 	if err != nil {
 		fmt.Println("Error connecting consumer")
 		panic(err)
 	}
 
+	topic := "comments"
 	consumer, err := worker.ConsumePartition(topic, 0, sarama.OffsetOldest)
 
 	if err != nil {
@@ -41,7 +42,6 @@ func main() {
 			select {
 			case err := <-consumer.Errors():
 				fmt.Println("\n*** >>> [consumer.error] -", err)
-
 			case msg := <-consumer.Messages():
 				msgCount++
 				fmt.Printf("Received message count: %d: | Topic (%s) | Message (%s)\n", msgCount, string(msg.Topic), string(msg.Value))

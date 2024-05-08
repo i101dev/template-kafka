@@ -7,6 +7,7 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/gofiber/fiber/v2"
+	"github.com/i101dev/template-kafka/config"
 )
 
 type Comment struct {
@@ -27,8 +28,10 @@ func main() {
 	apiV1 := app.Group("/api/v1")
 
 	apiV1.Post("/comment", createComment)
-	err := app.Listen(":5000")
-	if err != nil {
+
+	producerPort := config.Var("PRODUCER_PORT")
+
+	if err := app.Listen(":" + producerPort); err != nil {
 		panic("Error starting producer HTTP server: " + err.Error())
 	}
 }
@@ -51,7 +54,7 @@ func ConnectProducer(brokerURLs []string) (sarama.SyncProducer, error) {
 
 func PushCommentToQueue(topic string, message []byte) error {
 
-	brokerURLs := []string{"localhost:29092"}
+	brokerURLs := []string{config.KafkaURI()}
 
 	producer, err := ConnectProducer(brokerURLs)
 
