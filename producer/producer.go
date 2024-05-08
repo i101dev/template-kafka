@@ -94,16 +94,17 @@ func createComment(ctx *fiber.Ctx) error {
 		return HandleError(ctx, 400, err, "Error marshalling comment to JSON")
 	}
 
-	err = PushCommentToQueue("comments", commentInBytes)
-	if err != nil {
+	if err := PushCommentToQueue("comments", commentInBytes); err != nil {
 		return HandleError(ctx, 500, err, "Error pushing comment to queue")
 	}
 
-	if err := ctx.JSON(&fiber.Map{
+	data := fiber.Map{
 		"success": true,
-		"message": "Comment pushed successfully",
 		"comment": newComment,
-	}); err != nil {
+		"message": "Comment pushed successfully",
+	}
+
+	if err := ctx.JSON(&data); err != nil {
 		return HandleError(ctx, 500, err, "Error sending JSON response")
 	}
 

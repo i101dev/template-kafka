@@ -19,23 +19,51 @@ func main() {
 		panic(err)
 	}
 
+	defer func() {
+		if err := worker.Close(); err != nil {
+			fmt.Println("Error closing worker:", err)
+		}
+	}()
+
 	topic := "comments"
-	consumer, err := worker.ConsumePartition(topic, 0, sarama.OffsetOldest)
+	consumer, err := startConsumer(worker, topic, 0)
 
 	if err != nil {
-		fmt.Println("Error consuming partition")
+		fmt.Println("Error starting consumer:", err)
 		panic(err)
 	}
 
-	fmt.Println("consumer started")
+	doneCh := make(chan struct{})
+	sigChan := setupSignalHandler()
+	msgCount := processMessages(consumer, sigChan, doneCh)
 
+	<-doneCh
+
+	fmt.Println("Processed", msgCount, "messages")
+}
+
+func startConsumer(consumer sarama.Consumer, topic string, partition int32) (sarama.PartitionConsumer, error) {
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetOldest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("Consumer started for topic:", topic)
+
+	return partitionConsumer, nil
+}
+
+func setupSignalHandler() chan os.Signal {
 	sigChan := make(chan os.Signal, 1)
-
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	return sigChan
+}
+
+func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, doneCh chan struct{}) int {
 
 	msgCount := 0
-
-	doneCh := make(chan struct{})
 
 	go func() {
 		for {
@@ -48,17 +76,12 @@ func main() {
 			case <-sigChan:
 				fmt.Println("Interruption detected")
 				doneCh <- struct{}{}
+				return // exit the goroutine
 			}
 		}
 	}()
 
-	<-doneCh
-
-	fmt.Println("Processed", msgCount, "messages")
-
-	if err := worker.Close(); err != nil {
-		panic(err)
-	}
+	return msgCount
 }
 
 func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
