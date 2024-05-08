@@ -27,7 +27,10 @@ func main() {
 	apiV1 := app.Group("/api/v1")
 
 	apiV1.Post("/comment", createComment)
-	app.Listen(":5000")
+	err := app.Listen(":5000")
+	if err != nil {
+		panic("Error starting producer HTTP server: " + err.Error())
+	}
 }
 
 func ConnectProducer(brokerURLs []string) (sarama.SyncProducer, error) {

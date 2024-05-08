@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-
 	topic := "comments"
 
 	worker, err := connectConsumer([]string{"localhost:29092"})
@@ -38,7 +37,6 @@ func main() {
 	doneCh := make(chan struct{})
 
 	go func() {
-
 		for {
 			select {
 			case err := <-consumer.Errors():
@@ -52,7 +50,6 @@ func main() {
 				doneCh <- struct{}{}
 			}
 		}
-
 	}()
 
 	<-doneCh
