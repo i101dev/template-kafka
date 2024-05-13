@@ -28,7 +28,7 @@ cd /producer
 go run producer.go
 ```
 
-## Step 3: Start Consumber Instance
+## Step 3: Start Consumer Instance
 
 ```bash
 cd /consumer
