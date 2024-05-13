@@ -12,13 +12,14 @@ import (
 )
 
 var (
-	msgcount     int64
-	msgcountFile = "msgcount.txt"
+	last     int64
+	lastFile = "last.txt"
 )
 
 func main() {
 
 	topic := "comments"
+	last, _ = readNumFromFile(lastFile)
 	consumer, err := connectConsumer([]string{config.KafkaURI()})
 
 	if err != nil {
@@ -32,7 +33,7 @@ func main() {
 		}
 	}()
 
-	topicConsumer, err := startConsumer(consumer, topic, 0, 0)
+	topicConsumer, err := startConsumer(consumer, topic, 0, last)
 
 	if err != nil {
 		fmt.Println("Error starting consumer:", err)
@@ -45,7 +46,7 @@ func main() {
 
 	<-doneCh
 
-	fmt.Println("Processed", msgcount, "messages")
+	fmt.Println("Processed", last, "messages")
 }
 
 func startConsumer(consumer sarama.Consumer, topic string, partition int32, offset int64) (sarama.PartitionConsumer, error) {
@@ -75,17 +76,14 @@ func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, 
 			case err := <-consumer.Errors():
 				fmt.Println("\n*** >>> [consumer.error] -", err)
 			case msg := <-consumer.Messages():
-				msgcount++
 				destructureMSG(msg)
-				writeNumToFile(msgcount, msgcountFile)
 			case <-sigChan:
-				fmt.Println("Interruption detected")
+				fmt.Println("\nInterruption detected")
 				doneCh <- struct{}{}
-				return // exit the goroutine
+				return
 			}
 		}
 	}()
-
 }
 
 func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
@@ -144,7 +142,11 @@ func writeNumToFile(offset int64, filename string) error {
 
 func destructureMSG(msg *sarama.ConsumerMessage) {
 
-	// fmt.Printf("Msg count: %d: | Topic (%s) | Message (%s)\n", msgcount, string(msg.Topic), msg.Value)
+	if msg.Offset > 5 {
+		writeNumToFile(msg.Offset-5, lastFile)
+	}
+
+	// fmt.Printf("Msg count: %d: | Topic (%s) | Message (%s)\n", last, string(msg.Topic), msg.Value)
 
 	var data map[string]interface{}
 
@@ -154,9 +156,6 @@ func destructureMSG(msg *sarama.ConsumerMessage) {
 
 	if msgValue, ok := data["msg"].(string); ok {
 		fmt.Printf("\n*** >>> Message received - %s", msgValue)
-		if msgValue == "PURGE" {
-			fmt.Println("\nInitialize purge")
-		}
 	} else {
 		fmt.Println("Message does not contain 'msg' field or it's not a string")
 	}
