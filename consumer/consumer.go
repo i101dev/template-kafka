@@ -11,14 +11,14 @@ import (
 )
 
 var (
-	offset     int64
-	offsetFile = "offset.txt"
+	msgcount     int64
+	msgcountFile = "msgcount.txt"
 )
 
 func main() {
 
-	offset, _ = readOffsetFromFile(offsetFile)
-	worker, err := connectConsumer([]string{config.KafkaURI()})
+	topic := "comments"
+	consumer, err := connectConsumer([]string{config.KafkaURI()})
 
 	if err != nil {
 		fmt.Println("Error connecting consumer")
@@ -26,13 +26,12 @@ func main() {
 	}
 
 	defer func() {
-		if err := worker.Close(); err != nil {
+		if err := consumer.Close(); err != nil {
 			fmt.Println("Error closing worker:", err)
 		}
 	}()
 
-	topic := "comments"
-	consumer, err := startConsumer(worker, topic, 0, offset)
+	topicConsumer, err := startConsumer(consumer, topic, 0, 0)
 
 	if err != nil {
 		fmt.Println("Error starting consumer:", err)
@@ -41,11 +40,11 @@ func main() {
 
 	doneCh := make(chan struct{})
 	sigChan := setupSignalHandler()
-	msgCount := processMessages(consumer, sigChan, doneCh)
+	processMessages(topicConsumer, sigChan, doneCh)
 
 	<-doneCh
 
-	fmt.Println("Processed", msgCount, "messages")
+	fmt.Println("Processed", msgcount, "messages")
 }
 
 func startConsumer(consumer sarama.Consumer, topic string, partition int32, offset int64) (sarama.PartitionConsumer, error) {
@@ -67,9 +66,7 @@ func setupSignalHandler() chan os.Signal {
 	return sigChan
 }
 
-func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, doneCh chan struct{}) int {
-
-	msgCount := 0
+func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, doneCh chan struct{}) {
 
 	go func() {
 		for {
@@ -77,9 +74,12 @@ func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, 
 			case err := <-consumer.Errors():
 				fmt.Println("\n*** >>> [consumer.error] -", err)
 			case msg := <-consumer.Messages():
-				msgCount++
-				writeOffsetToFile(msg.Offset+1, offsetFile)
-				fmt.Printf("Received message count: %d: | Topic (%s) | Message (%s)\n", msgCount, string(msg.Topic), string(msg.Value))
+				msgcount++
+				writeNumToFile(msgcount, msgcountFile)
+				fmt.Printf("Msg count: %d: | Topic (%s) | Message (%s)\n", msgcount, string(msg.Topic), msg.Value)
+				if string(msg.Value) == "PURGE" {
+					fmt.Println("\nPurge all Kafka topic messages")
+				}
 			case <-sigChan:
 				fmt.Println("Interruption detected")
 				doneCh <- struct{}{}
@@ -88,7 +88,6 @@ func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, 
 		}
 	}()
 
-	return msgCount
 }
 
 func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
@@ -106,7 +105,7 @@ func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
 	return conn, nil
 }
 
-func readOffsetFromFile(filename string) (int64, error) {
+func readNumFromFile(filename string) (int64, error) {
 	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return 0, err
@@ -122,17 +121,25 @@ func readOffsetFromFile(filename string) (int64, error) {
 	return offset, nil
 }
 
-func writeOffsetToFile(offset int64, filename string) error {
+func writeNumToFile(offset int64, filename string) error {
+
+	// fmt.Println("\n*** >>>New offset - ", offset)
+
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
+
 	if err != nil {
 		return err
 	}
+
 	defer file.Close()
 
 	_, err = fmt.Fprintf(file, "%d", offset)
+
 	if err != nil {
 		return err
 	}
+
+	offset += 5
 
 	return nil
 }

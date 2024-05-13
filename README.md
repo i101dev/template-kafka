@@ -50,3 +50,32 @@ curl -X POST -H "Content-Type: application/json" -d '{"msg": "Hello, Kafka!"}' h
   "msg":"Pushing test message to Kafka"
 }
 ```
+
+## Step 5: Purging expired messages
+
+```
+docker exec -it 7c2e8960d96b /bin/bash
+```
+
+Replace `7c2e8960d96b` with the ID of your Kafka container.
+
+```
+kafka-topics --bootstrap-server localhost:9092 --delete --topic <topic_name>
+```
+
+### Or
+
+```
+topics=$(kafka-topics --bootstrap-server localhost:9092 --list)
+
+for topic in $topics
+do
+    kafka-topics --bootstrap-server localhost:9092 --delete --topic $topic
+done
+```
+
+```
+exit
+```
+
+This process will delete all messages and associated data for the specified topics. Make sure to replace the container IDs and topic names as appropriate. Let me know if you need further assistance!
