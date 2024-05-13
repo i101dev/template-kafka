@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -75,11 +76,8 @@ func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, 
 				fmt.Println("\n*** >>> [consumer.error] -", err)
 			case msg := <-consumer.Messages():
 				msgcount++
+				destructureMSG(msg)
 				writeNumToFile(msgcount, msgcountFile)
-				fmt.Printf("Msg count: %d: | Topic (%s) | Message (%s)\n", msgcount, string(msg.Topic), msg.Value)
-				if string(msg.Value) == "PURGE" {
-					fmt.Println("\nPurge all Kafka topic messages")
-				}
 			case <-sigChan:
 				fmt.Println("Interruption detected")
 				doneCh <- struct{}{}
@@ -142,4 +140,24 @@ func writeNumToFile(offset int64, filename string) error {
 	offset += 5
 
 	return nil
+}
+
+func destructureMSG(msg *sarama.ConsumerMessage) {
+
+	// fmt.Printf("Msg count: %d: | Topic (%s) | Message (%s)\n", msgcount, string(msg.Topic), msg.Value)
+
+	var data map[string]interface{}
+
+	if err := json.Unmarshal(msg.Value, &data); err != nil {
+		fmt.Println("Error decoding message:", err)
+	}
+
+	if msgValue, ok := data["msg"].(string); ok {
+		fmt.Printf("\n*** >>> Message received - %s", msgValue)
+		if msgValue == "PURGE" {
+			fmt.Println("\nInitialize purge")
+		}
+	} else {
+		fmt.Println("Message does not contain 'msg' field or it's not a string")
+	}
 }
