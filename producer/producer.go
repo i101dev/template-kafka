@@ -25,9 +25,9 @@ func (e *KafkaError) Error() string {
 func main() {
 
 	app := fiber.New()
-	apiV1 := app.Group("/api/v1")
+	// apiV1 := app.Group("/api/v1")
 
-	apiV1.Post("/comment", createComment)
+	app.Post("/comment", createComment)
 
 	producerPort := config.Var("PRODUCER_PORT")
 

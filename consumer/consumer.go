@@ -10,8 +10,14 @@ import (
 	"github.com/i101dev/template-kafka/config"
 )
 
+var (
+	offset     int64
+	offsetFile = "offset.txt"
+)
+
 func main() {
 
+	offset, _ = readOffsetFromFile(offsetFile)
 	worker, err := connectConsumer([]string{config.KafkaURI()})
 
 	if err != nil {
@@ -26,7 +32,7 @@ func main() {
 	}()
 
 	topic := "comments"
-	consumer, err := startConsumer(worker, topic, 0)
+	consumer, err := startConsumer(worker, topic, 0, offset)
 
 	if err != nil {
 		fmt.Println("Error starting consumer:", err)
@@ -42,9 +48,9 @@ func main() {
 	fmt.Println("Processed", msgCount, "messages")
 }
 
-func startConsumer(consumer sarama.Consumer, topic string, partition int32) (sarama.PartitionConsumer, error) {
+func startConsumer(consumer sarama.Consumer, topic string, partition int32, offset int64) (sarama.PartitionConsumer, error) {
 
-	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetOldest)
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, offset)
 
 	if err != nil {
 		return nil, err
@@ -72,6 +78,7 @@ func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, 
 				fmt.Println("\n*** >>> [consumer.error] -", err)
 			case msg := <-consumer.Messages():
 				msgCount++
+				writeOffsetToFile(msg.Offset+1, offsetFile)
 				fmt.Printf("Received message count: %d: | Topic (%s) | Message (%s)\n", msgCount, string(msg.Topic), string(msg.Value))
 			case <-sigChan:
 				fmt.Println("Interruption detected")
@@ -97,4 +104,35 @@ func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
 	}
 
 	return conn, nil
+}
+
+func readOffsetFromFile(filename string) (int64, error) {
+	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	var offset int64
+	_, err = fmt.Fscanf(file, "%d", &offset)
+	if err != nil {
+		return 0, err
+	}
+
+	return offset, nil
+}
+
+func writeOffsetToFile(offset int64, filename string) error {
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = fmt.Fprintf(file, "%d", offset)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
