@@ -119,6 +119,7 @@ func HandleError(ctx *fiber.Ctx, status int, err error, message string) error {
 		"error":   err.Error(),
 	})
 }
+
 func HandleKafkaError(err error, context string) error {
 	log.Printf("*** >>> Kafka Error (%s): %v", context, err)
 	return &KafkaError{

@@ -4,8 +4,8 @@ Run the project with the following steps:
 
 1. Start the Kafka instance with `docker-compose.yaml`.
 2. Run the producer service.
-3. Run the worker service.
-4. Post a message to the producer to see it processed by the worker.
+3. Run the consumer service.
+4. Post a message to the producer to see it processed by the consumer.
 
 ## Prerequisites
 
@@ -28,11 +28,11 @@ cd /producer
 go run producer.go
 ```
 
-## Step 3: Start Worker Instance
+## Step 3: Start Consumber Instance
 
 ```bash
-cd /worker
-go run worker.go
+cd /consumer
+go run consumer.go
 ```
 
 ## Step 4: Send a test message
