@@ -18,14 +18,9 @@ type KafkaError struct {
 	Message       string
 }
 
-func (e *KafkaError) Error() string {
-	return fmt.Sprintf("%s: %v", e.Message, e.OriginalError)
-}
-
 func main() {
 
 	app := fiber.New()
-	// apiV1 := app.Group("/api/v1")
 
 	app.Post("/comment", createComment)
 
@@ -36,37 +31,60 @@ func main() {
 	}
 }
 
-func ConnectProducer(brokerURLs []string) (sarama.SyncProducer, error) {
+func createComment(ctx *fiber.Ctx) error {
 
-	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 5
-	config.Producer.Return.Successes = true
+	// -------------------------------------------------------------------------------
+	// Step 1: Process incoming API request
+	//
+	newComment := new(Comment)
 
-	producer, err := sarama.NewSyncProducer(brokerURLs, config)
-
-	if err != nil {
-		return nil, HandleKafkaError(err, "Failed to connect to Kafka broker")
+	if err := ctx.BodyParser(&newComment); err != nil {
+		return HandleFiberApiError(ctx, 400, err, "Error parsing comment data")
 	}
 
-	return producer, nil
-}
-
-func PushCommentToQueue(topic string, message []byte) error {
-
-	brokerURLs := []string{config.KafkaURI()}
-
-	producer, err := ConnectProducer(brokerURLs)
+	commentInBytes, err := json.Marshal(newComment)
 
 	if err != nil {
-		return HandleKafkaError(err, "Producer connection failed")
+		return HandleFiberApiError(ctx, 400, err, "Error marshalling comment to JSON")
+	}
+
+	// -------------------------------------------------------------------------------
+	// Step 2: Push to Kafka
+	//
+	if err := pushCommentToKafkaQueue("comments", commentInBytes); err != nil {
+		return HandleFiberApiError(ctx, 500, err, "Error pushing comment to queue")
+	}
+
+	// -------------------------------------------------------------------------------
+	// Step 3: Return API response
+	//
+	data := fiber.Map{
+		"success": true,
+		"comment": newComment,
+		"message": "Comment pushed successfully",
+	}
+
+	if err := ctx.JSON(&data); err != nil {
+		return HandleFiberApiError(ctx, 500, err, "Error sending JSON response")
+	}
+
+	return nil
+}
+
+func pushCommentToKafkaQueue(topic string, message []byte) error {
+
+	producer, err := connectKafkaProducer()
+
+	if err != nil {
+		return err
 	}
 
 	defer producer.Close()
 
 	msg := &sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder(message),
+		Topic:    topic,
+		Value:    sarama.StringEncoder(message),
+		Metadata: []string{1: "metadata 1", 2: "metadata 2", 3: "metadata 3"},
 	}
 
 	partition, offset, err := producer.SendMessage(msg)
@@ -80,38 +98,29 @@ func PushCommentToQueue(topic string, message []byte) error {
 	return nil
 }
 
-func createComment(ctx *fiber.Ctx) error {
+func connectKafkaProducer() (sarama.SyncProducer, error) {
 
-	newComment := new(Comment)
+	brokerURLs := []string{config.KafkaURI()}
 
-	if err := ctx.BodyParser(&newComment); err != nil {
-		return HandleError(ctx, 400, err, "Error parsing comment data")
-	}
+	config := sarama.NewConfig()
 
-	commentInBytes, err := json.Marshal(newComment)
+	config.Producer.Retry.Max = 5
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Producer.Return.Successes = true
+
+	producer, err := sarama.NewSyncProducer(brokerURLs, config)
 
 	if err != nil {
-		return HandleError(ctx, 400, err, "Error marshalling comment to JSON")
+		return nil, HandleKafkaError(err, "Failed to connect to Kafka broker")
 	}
 
-	if err := PushCommentToQueue("comments", commentInBytes); err != nil {
-		return HandleError(ctx, 500, err, "Error pushing comment to queue")
-	}
-
-	data := fiber.Map{
-		"success": true,
-		"comment": newComment,
-		"message": "Comment pushed successfully",
-	}
-
-	if err := ctx.JSON(&data); err != nil {
-		return HandleError(ctx, 500, err, "Error sending JSON response")
-	}
-
-	return nil
+	return producer, nil
 }
 
-func HandleError(ctx *fiber.Ctx, status int, err error, message string) error {
+// -------------------------------------------------------------------------------
+// Error handlers
+
+func HandleFiberApiError(ctx *fiber.Ctx, status int, err error, message string) error {
 	log.Printf("*** >>> %s: %v", message, err)
 	return ctx.Status(status).JSON(&fiber.Map{
 		"success": false,
@@ -126,4 +135,7 @@ func HandleKafkaError(err error, context string) error {
 		OriginalError: err,
 		Message:       context,
 	}
+}
+func (e *KafkaError) Error() string {
+	return fmt.Sprintf("%s: %v", e.Message, e.OriginalError)
 }

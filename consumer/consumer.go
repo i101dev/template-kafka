@@ -19,7 +19,7 @@ var (
 func main() {
 
 	topic := "comments"
-	last, _ = readNumFromFile(lastFile)
+	last, _ = config.ReadNumFromFile(lastFile)
 	consumer, err := connectConsumer([]string{config.KafkaURI()})
 
 	if err != nil {
@@ -29,7 +29,7 @@ func main() {
 
 	defer func() {
 		if err := consumer.Close(); err != nil {
-			fmt.Println("Error closing worker:", err)
+			fmt.Println("Error closing consumer:", err)
 		}
 	}()
 
@@ -47,6 +47,21 @@ func main() {
 	<-doneCh
 
 	fmt.Println("Processed", last, "messages")
+}
+
+func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
+
+	config := sarama.NewConfig()
+
+	config.Consumer.Return.Errors = true
+
+	conn, err := sarama.NewConsumer(brokerURL, config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
 }
 
 func startConsumer(consumer sarama.Consumer, topic string, partition int32, offset int64) (sarama.PartitionConsumer, error) {
@@ -86,64 +101,10 @@ func processMessages(consumer sarama.PartitionConsumer, sigChan chan os.Signal, 
 	}()
 }
 
-func connectConsumer(brokerURL []string) (sarama.Consumer, error) {
-
-	config := sarama.NewConfig()
-
-	config.Consumer.Return.Errors = true
-
-	conn, err := sarama.NewConsumer(brokerURL, config)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
-}
-
-func readNumFromFile(filename string) (int64, error) {
-	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0666)
-	if err != nil {
-		return 0, err
-	}
-	defer file.Close()
-
-	var offset int64
-	_, err = fmt.Fscanf(file, "%d", &offset)
-	if err != nil {
-		return 0, err
-	}
-
-	return offset, nil
-}
-
-func writeNumToFile(offset int64, filename string) error {
-
-	// fmt.Println("\n*** >>>New offset - ", offset)
-
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
-
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
-	_, err = fmt.Fprintf(file, "%d", offset)
-
-	if err != nil {
-		return err
-	}
-
-	offset += 5
-
-	return nil
-}
-
 func destructureMSG(msg *sarama.ConsumerMessage) {
 
 	if msg.Offset > 5 {
-		writeNumToFile(msg.Offset-5, lastFile)
+		config.WriteNumToFile(msg.Offset-5, lastFile)
 	}
 
 	// fmt.Printf("Msg count: %d: | Topic (%s) | Message (%s)\n", last, string(msg.Topic), msg.Value)
